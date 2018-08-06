@@ -55,7 +55,6 @@ func (s *WinRMSuite) TestHttpRequest(c *C) {
 	c.Assert(shell.id, Equals, "67A74734-DD32-4F10-89DE-49A060483810")
 }
 
-
 func (s *WinRMSuite) TestHttpViaCustomDialerRequest(c *C) {
 	normalDialer := (&net.Dialer{
 		Timeout:   30 * time.Second,

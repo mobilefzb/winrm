@@ -3,13 +3,13 @@ package winrm
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/Azure/go-ntlmssp"
+	"github.com/masterzen/winrm/soap"
 	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
 	"time"
-
-	"github.com/masterzen/winrm/soap"
 )
 
 var soapXML = "application/soap+xml"
@@ -39,7 +39,7 @@ func body(response *http.Response) (string, error) {
 
 type clientRequest struct {
 	transport http.RoundTripper
-	dial func(network, addr string) (net.Conn, error)
+	dial      func(network, addr string) (net.Conn, error)
 }
 
 func (c *clientRequest) Transport(endpoint *Endpoint) error {
@@ -108,9 +108,91 @@ func (c clientRequest) Post(client *Client, request *soap.SoapMessage) (string, 
 	return body, err
 }
 
+type clientNtlmRequest struct {
+	transport http.RoundTripper
+	dial      func(network, addr string) (net.Conn, error)
+}
+
+func (c *clientNtlmRequest) Transport(endpoint *Endpoint) error {
+
+	dial := (&net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}).Dial
+
+	if c.dial != nil {
+		dial = c.dial
+	}
+
+	transport := &http.Transport{
+		Proxy: http.ProxyFromEnvironment,
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: endpoint.Insecure,
+			ServerName:         endpoint.TLSServerName,
+		},
+		Dial: dial,
+		ResponseHeaderTimeout: endpoint.Timeout,
+	}
+
+	if endpoint.CACert != nil && len(endpoint.CACert) > 0 {
+		certPool, err := readCACerts(endpoint.CACert)
+		if err != nil {
+			return err
+		}
+
+		transport.TLSClientConfig.RootCAs = certPool
+	}
+
+	c.transport = transport
+
+	return nil
+}
+
+// Post make post to the winrm soap service
+func (c clientNtlmRequest) Post(client *Client, request *soap.SoapMessage) (string, error) {
+	//httpClient := &http.Client{Transport: c.transport}
+	httpClient := &http.Client{
+		Transport: ntlmssp.Negotiator{
+			RoundTripper: &http.Transport{},
+		},
+	}
+
+	req, err := http.NewRequest("POST", client.url, strings.NewReader(request.String()))
+	if err != nil {
+		return "", fmt.Errorf("impossible to create http request %s", err)
+	}
+	req.Header.Set("Content-Type", `multipart/encrypted;protocol="application/HTTP-SPNEGO-session-encrypted";boundary="Encrypted Boundary";`)
+	fmt.Printf("Content-Type: %s", `multipart/encrypted;protocol="application/HTTP-SPNEGO-session-encrypted";boundary="Encrypted Boundary";`)
+	req.SetBasicAuth(client.username, client.password)
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("unknown error %s", err)
+	}
+
+	body, err := body(resp)
+	if err != nil {
+		return "", fmt.Errorf("http response error: %d - %s", resp.StatusCode, err.Error())
+	}
+
+	// if we have different 200 http status code
+	// we must replace the error
+	defer func() {
+		if resp.StatusCode != 200 {
+			body, err = "", fmt.Errorf("http error %d: %s", resp.StatusCode, body)
+		}
+	}()
+
+	return body, err
+}
+
+func NewClientWithNtlmDial(p *Parameters) Transporter {
+	return &clientNtlmRequest{
+		dial: p.Dial,
+	}
+}
 
 func NewClientWithDial(dial func(network, addr string) (net.Conn, error)) *clientRequest {
 	return &clientRequest{
-		dial:dial,
+		dial: dial,
 	}
 }

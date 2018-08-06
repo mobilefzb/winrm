@@ -16,7 +16,7 @@ import (
 type Requester struct {
 	http      func(*Client, *soap.SoapMessage) (string, error)
 	transport http.RoundTripper
-	dial func(network, addr string) (net.Conn, error)
+	dial      func(network, addr string) (net.Conn, error)
 }
 
 func (r Requester) Post(client *Client, request *soap.SoapMessage) (string, error) {
@@ -220,7 +220,6 @@ func (s *WinRMSuite) TestReplaceTransportWithDecorator(c *C) {
 	_, ok := client.http.(*ClientAuthRequest)
 	c.Assert(ok, Equals, true)
 }
-
 
 func (s *WinRMSuite) TestReplaceDial(c *C) {
 	ts, host, port, err := runWinRMFakeServer(c, "this is the input")

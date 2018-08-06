@@ -27,7 +27,6 @@ func (s *WinRMSuite) TestHttpNTLMRequest(c *C) {
 	c.Assert(shell.id, Equals, "67A74734-DD32-4F10-89DE-49A060483810")
 }
 
-
 func (s *WinRMSuite) TestHttpNTLMViaCustomDialerRequest(c *C) {
 
 	normalDialer := (&net.Dialer{
@@ -56,4 +55,3 @@ func (s *WinRMSuite) TestHttpNTLMViaCustomDialerRequest(c *C) {
 	c.Assert(err, IsNil)
 	c.Assert(usedCustomDialer, Equals, true)
 }
-
